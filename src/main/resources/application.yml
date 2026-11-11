@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: power-bank-rental
+
+  # MongoDB: 고장 신고(damage_report) 저장용
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/powerbank
+
+  # H2 인메모리 DB: Member / PowerBank / Rental 저장용
+  datasource:
+    url: jdbc:h2:mem:powerbank;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false

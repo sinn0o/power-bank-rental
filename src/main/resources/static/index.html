@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>캠퍼스 보조배터리 대여</title>
+<style>
+  :root {
+    --green: #1f9d55;
+    --green-light: #e4f6ea;
+    --orange: #e07b00;
+    --orange-light: #fdf0e0;
+    --red: #d32f2f;
+    --red-light: #fbe4e4;
+    --blue: #1565c0;
+    --blue-light: #e3eefc;
+    --gray: #666;
+    --gray-light: #eee;
+    --bg: #f4f6f5;
+    --border: #e0e0e0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: var(--bg);
+    color: #222;
+  }
+  .app { max-width: 1300px; margin: 0 auto; padding: 20px; }
+  header h1 { font-size: 22px; margin: 0 0 16px; }
+
+  /* 좌(35%)/우(65%) 2단 레이아웃, 좁은 화면에서는 세로로 쌓임 */
+  .layout { display: flex; gap: 18px; align-items: flex-start; }
+  .sidebar { flex: 0 0 35%; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 900px) {
+    .layout { flex-direction: column; }
+    .sidebar, .main { flex: 1 1 100%; }
+  }
+
+  .card, .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .card h2, .panel h2 { font-size: 15px; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: center; }
+  .card .desc { font-size: 12px; color: var(--gray); margin: -6px 0 10px; }
+
+  label { display: block; font-size: 12px; color: #555; margin-top: 8px; }
+  input, textarea {
+    width: 100%; padding: 6px 8px; margin-top: 2px;
+    border: 1px solid var(--border); border-radius: 5px; font-size: 13px;
+  }
+  button {
+    border: none; border-radius: 5px; background: var(--green); color: #fff;
+    padding: 7px 14px; font-size: 13px; cursor: pointer; margin-top: 10px;
+  }
+  button:hover { opacity: 0.88; }
+  button.secondary { background: var(--gray-light); color: #333; }
+  button.small { padding: 3px 8px; font-size: 11px; margin-top: 0; }
+
+  /* 패널 상단 공통 영역 */
+  .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .count { font-size: 12px; color: var(--gray); }
+  .highlight { color: var(--green); font-weight: bold; }
+
+  .filter-row { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .filter-btn {
+    background: var(--gray-light); color: #333; margin-top: 0;
+    padding: 5px 10px; font-size: 12px;
+  }
+  .filter-btn.active { background: var(--green); color: #fff; }
+
+  .list-box { max-height: 300px; overflow-y: auto; border-top: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+  tbody tr:hover { background: #f8faf9; cursor: pointer; }
+  .empty { padding: 16px 4px; color: var(--gray); font-size: 13px; text-align: center; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: bold;
+  }
+  .badge.AVAILABLE { background: var(--green-light); color: var(--green); }
+  .badge.RENTED    { background: var(--orange-light); color: var(--orange); }
+  .badge.BROKEN    { background: var(--red-light); color: var(--red); }
+  .badge.RENTING   { background: var(--blue-light); color: var(--blue); }
+  .badge.RETURNED  { background: var(--gray-light); color: var(--gray); }
+  .badge.OVERDUE   { background: var(--red-light); color: var(--red); }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+  /* 에러 토스트 */
+  #toast {
+    position: fixed; top: 16px; right: 16px; z-index: 100;
+    background: var(--red); color: #fff; padding: 10px 16px;
+    border-radius: 6px; font-size: 13px; max-width: 320px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div class="app">
+  <header><h1>🔋 캠퍼스 보조배터리 대여</h1></header>
+
+  <div class="layout">
+
+    <!-- ===== 왼쪽 사이드 패널: 조회용 ===== -->
+    <aside class="sidebar">
+
+      <!-- 등록된 학생 목록 -->
+      <div class="panel">
+        <div class="panel-head">
+          <h2>등록된 학생</h2>
+          <button class="secondary small" onclick="loadMembers()">새로고침</button>
+        </div>
+        <input id="member-search" placeholder="이름 또는 학번 검색" oninput="setMemberSearch(this.value)">
+        <p class="count" id="member-count"></p>
+        <div class="list-box">
+          <table>
+            <thead><tr><th>ID</th><th>이름</th><th>학번</th></tr></thead>
+            <tbody id="member-tbody"></tbody>
+          </table>
+          <p class="empty" id="member-empty" style="display:none;"></p>
+        </div>
+      </div>
+
+      <!-- 등록된 보조배터리 목록 -->
+      <div class="panel">
+        <div class="panel-head">
+          <h2>등록된 보조배터리</h2>
+          <button class="secondary small" onclick="loadPowerBanks()">새로고침</button>
+        </div>
+        <div class="filter-row" id="powerbank-filters">
+          <button class="filter-btn active" data-value="" onclick="setPowerBankFilter('')">전체</button>
+          <button class="filter-btn" data-value="AVAILABLE" onclick="setPowerBankFilter('AVAILABLE')">AVAILABLE</button>
+          <button class="filter-btn" data-value="RENTED" onclick="setPowerBankFilter('RENTED')">RENTED</button>
+          <button class="filter-btn" data-value="BROKEN" onclick="setPowerBankFilter('BROKEN')">BROKEN</button>
+        </div>
+        <p class="count" id="powerbank-count"></p>
+        <div class="list-box">
+          <table>
+            <thead><tr><th>ID</th><th>serialNo</th><th>용량</th><th>위치</th><th>상태</th></tr></thead>
+            <tbody id="powerbank-tbody"></tbody>
+          </table>
+          <p class="empty" id="powerbank-empty" style="display:none;"></p>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ===== 오른쪽 메인 패널: 작업용 카드들 ===== -->
+    <section class="main">
+
+      <!-- 1. 회원 등록 -->
+      <div class="card">
+        <h2>1. 회원 등록</h2>
+        <label>이름</label>
+        <input id="reg-name" placeholder="홍길동">
+        <label>학번</label>
+        <input id="reg-studentNo" placeholder="20231234">
+        <button onclick="registerMember()">등록</button>
+      </div>
+
+      <!-- 2. 보조배터리 등록 -->
+      <div class="card">
+        <h2>2. 보조배터리 등록</h2>
+        <label>시리얼 번호</label>
+        <input id="regpb-serialNo" placeholder="PB-001">
+        <label>용량(mAh)</label>
+        <input id="regpb-capacityMah" type="number" placeholder="10000">
+        <label>위치</label>
+        <input id="regpb-location" placeholder="도서관">
+        <button onclick="registerPowerBank()">등록</button>
+      </div>
+
+      <!-- 3. 대여 -->
+      <div class="card">
+        <h2>3. 대여</h2>
+        <div class="desc">왼쪽 목록에서 학생/배터리 행을 클릭하면 ID가 자동으로 채워집니다.</div>
+        <label>회원 ID</label>
+        <input id="rent-memberId" type="number">
+        <label>보조배터리 ID</label>
+        <input id="rent-powerBankId" type="number">
+        <button onclick="rentPowerBank()">대여</button>
+      </div>
+
+      <!-- 4. 내 대여 이력 -->
+      <div class="card">
+        <h2>4. 내 대여 이력</h2>
+        <label>회원 ID</label>
+        <input id="history-memberId" type="number">
+        <button onclick="loadRentalHistory()">조회</button>
+        <div class="list-box" style="margin-top:10px;">
+          <table>
+            <thead><tr><th>ID</th><th>배터리</th><th>대여일시</th><th>반납기한</th><th>상태</th><th></th></tr></thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+          <p class="empty" id="history-empty" style="display:none;"></p>
+        </div>
+      </div>
+
+      <!-- 5. 고장 신고 -->
+      <div class="card">
+        <h2>5. 고장 신고</h2>
+        <label>보조배터리 ID</label>
+        <input id="rep-powerBankId" type="number">
+        <button onclick="loadReports()">신고 목록 조회</button>
+        <div class="list-box" style="margin-top:10px;">
+          <table>
+            <thead><tr><th>유형</th><th>설명</th><th>신고일시</th></tr></thead>
+            <tbody id="report-tbody"></tbody>
+          </table>
+          <p class="empty" id="report-empty" style="display:none;"></p>
+        </div>
+        <hr>
+        <label>신고자 회원 ID</label>
+        <input id="rep-memberId" type="number">
+        <label>고장 유형</label>
+        <input id="rep-type" placeholder="NOT_CHARGING">
+        <label>상세 설명</label>
+        <textarea id="rep-description" rows="2" placeholder="충전이 안 됩니다"></textarea>
+        <button onclick="createReport()">신고 등록</button>
+      </div>
+
+    </section>
+  </div>
+</div>
+
+<script>
+  // ===== 공통 상태 =====
+  let allMembers = [];
+  let allPowerBanks = [];
+  let memberSearch = '';
+  let powerBankFilter = '';
+
+  // ===== 공통 유틸 =====
+  function showToast(message) {
+    const el = document.getElementById('toast');
+    el.textContent = message;
+    el.style.display = 'block';
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '-';
+    return iso.slice(0, 16).replace('T', ' ');
+  }
+
+  function badge(status) {
+    return `<span class="badge ${status}">${status}</span>`;
+  }
+
+  // 모든 API 호출이 거치는 공통 래퍼: 에러 응답({status,code,message})을 토스트로 표시
+  async function api(method, url, body) {
+    const res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      showToast(data?.message || `요청에 실패했습니다 (HTTP ${res.status})`);
+      throw new Error(data?.message);
+    }
+    return data;
+  }
+
+  // ===== 좌측 패널: 학생 목록 =====
+  async function loadMembers() {
+    try {
+      allMembers = await api('GET', '/members');
+    } catch (e) { return; }
+    renderMembers();
+  }
+
+  function setMemberSearch(value) {
+    memberSearch = value;
+    renderMembers();
+  }
+
+  function renderMembers() {
+    const term = memberSearch.trim().toLowerCase();
+    const filtered = term
+      ? allMembers.filter(m => m.name.toLowerCase().includes(term) || m.studentNo.toLowerCase().includes(term))
+      : allMembers;
+
+    document.getElementById('member-count').textContent = term
+      ? `${allMembers.length}명 중 ${filtered.length}명`
+      : `총 ${allMembers.length}명`;
+
+    const tbody = document.getElementById('member-tbody');
+    const empty = document.getElementById('member-empty');
+    if (allMembers.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = '등록된 항목이 없습니다';
+    } else if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = '조건에 맞는 항목이 없습니다';
+    } else {
+      empty.style.display = 'none';
+      tbody.innerHTML = filtered.map(m => `
+        <tr onclick="fillMemberId(${m.id})">
+          <td>${m.id}</td><td>${m.name}</td><td>${m.studentNo}</td>
+        </tr>`).join('');
+    }
+  }
+
+  function fillMemberId(id) {
+    document.getElementById('rent-memberId').value = id;
+    document.getElementById('history-memberId').value = id;
+    document.getElementById('rep-memberId').value = id;
+  }
+
+  // ===== 좌측 패널: 보조배터리 목록 =====
+  async function loadPowerBanks() {
+    try {
+      allPowerBanks = await api('GET', '/power-banks');
+    } catch (e) { return; }
+    renderPowerBanks();
+  }
+
+  function setPowerBankFilter(status) {
+    powerBankFilter = status;
+    document.querySelectorAll('#powerbank-filters .filter-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === status);
+    });
+    renderPowerBanks();
+  }
+
+  function renderPowerBanks() {
+    const filtered = powerBankFilter
+      ? allPowerBanks.filter(p => p.status === powerBankFilter)
+      : allPowerBanks;
+    const availableCount = allPowerBanks.filter(p => p.status === 'AVAILABLE').length;
+
+    document.getElementById('powerbank-count').innerHTML = (powerBankFilter
+      ? `${allPowerBanks.length}개 중 ${filtered.length}개`
+      : `총 ${allPowerBanks.length}개`) + ` · <span class="highlight">대여 가능 ${availableCount}개</span>`;
+
+    const tbody = document.getElementById('powerbank-tbody');
+    const empty = document.getElementById('powerbank-empty');
+    if (allPowerBanks.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = '등록된 항목이 없습니다';
+    } else if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = '조건에 맞는 항목이 없습니다';
+    } else {
+      empty.style.display = 'none';
+      tbody.innerHTML = filtered.map(p => `
+        <tr onclick="fillPowerBankId(${p.id})">
+          <td>${p.id}</td><td>${p.serialNo}</td><td>${p.capacityMah}</td><td>${p.location}</td><td>${badge(p.status)}</td>
+        </tr>`).join('');
+    }
+  }
+
+  function fillPowerBankId(id) {
+    document.getElementById('rent-powerBankId').value = id;
+    document.getElementById('rep-powerBankId').value = id;
+  }
+
+  async function refreshLists() {
+    await Promise.all([loadMembers(), loadPowerBanks()]);
+  }
+
+  // ===== 1. 회원 등록 =====
+  async function registerMember() {
+    const name = document.getElementById('reg-name').value;
+    const studentNo = document.getElementById('reg-studentNo').value;
+    try {
+      await api('POST', '/members', { name, studentNo });
+    } catch (e) { return; }
+    document.getElementById('reg-name').value = '';
+    document.getElementById('reg-studentNo').value = '';
+    refreshLists();
+  }
+
+  // ===== 2. 보조배터리 등록 =====
+  async function registerPowerBank() {
+    const serialNo = document.getElementById('regpb-serialNo').value;
+    const capacityMah = Number(document.getElementById('regpb-capacityMah').value);
+    const location = document.getElementById('regpb-location').value;
+    try {
+      await api('POST', '/power-banks', { serialNo, capacityMah, location });
+    } catch (e) { return; }
+    document.getElementById('regpb-serialNo').value = '';
+    document.getElementById('regpb-capacityMah').value = '';
+    document.getElementById('regpb-location').value = '';
+    refreshLists();
+  }
+
+  // ===== 3. 대여 =====
+  async function rentPowerBank() {
+    const memberId = Number(document.getElementById('rent-memberId').value);
+    const powerBankId = Number(document.getElementById('rent-powerBankId').value);
+    try {
+      await api('POST', '/rentals', { memberId, powerBankId });
+    } catch (e) { return; }
+    refreshLists();
+  }
+
+  // ===== 4. 내 대여 이력 =====
+  async function loadRentalHistory() {
+    const memberId = document.getElementById('history-memberId').value;
+    if (!memberId) { showToast('회원 ID를 입력하세요'); return; }
+    let rentals;
+    try {
+      rentals = await api('GET', `/rentals?memberId=${memberId}`);
+    } catch (e) { return; }
+
+    const tbody = document.getElementById('history-tbody');
+    const empty = document.getElementById('history-empty');
+    if (rentals.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = '등록된 항목이 없습니다';
+    } else {
+      empty.style.display = 'none';
+      tbody.innerHTML = rentals.map(r => `
+        <tr>
+          <td>${r.id}</td><td>${r.powerBankId}</td><td>${fmtDate(r.rentedAt)}</td><td>${fmtDate(r.dueAt)}</td>
+          <td>${badge(r.status)}</td>
+          <td>${r.status === 'RENTING' ? `<button class="small" onclick="returnRental(${r.id})">반납</button>` : ''}</td>
+        </tr>`).join('');
+    }
+  }
+
+  async function returnRental(rentalId) {
+    try {
+      await api('PATCH', `/rentals/${rentalId}/return`);
+    } catch (e) { return; }
+    loadRentalHistory();
+    refreshLists();
+  }
+
+  // ===== 5. 고장 신고 =====
+  async function loadReports() {
+    const powerBankId = document.getElementById('rep-powerBankId').value;
+    if (!powerBankId) { showToast('보조배터리 ID를 입력하세요'); return; }
+    let reports;
+    try {
+      reports = await api('GET', `/power-banks/${powerBankId}/reports`);
+    } catch (e) { return; }
+
+    const tbody = document.getElementById('report-tbody');
+    const empty = document.getElementById('report-empty');
+    if (reports.length === 0) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      empty.textContent = '등록된 신고가 없습니다';
+    } else {
+      empty.style.display = 'none';
+      tbody.innerHTML = reports.map(r => `
+        <tr><td>${r.type}</td><td>${r.description}</td><td>${fmtDate(r.createdAt)}</td></tr>`).join('');
+    }
+  }
+
+  async function createReport() {
+    const powerBankId = document.getElementById('rep-powerBankId').value;
+    if (!powerBankId) { showToast('보조배터리 ID를 입력하세요'); return; }
+    const memberId = Number(document.getElementById('rep-memberId').value);
+    const type = document.getElementById('rep-type').value;
+    const description = document.getElementById('rep-description').value;
+    try {
+      await api('POST', `/power-banks/${powerBankId}/reports`, { memberId, type, description });
+    } catch (e) { return; }
+    document.getElementById('rep-type').value = '';
+    document.getElementById('rep-description').value = '';
+    loadReports();
+    refreshLists();
+  }
+
+  // ===== 초기 로딩 =====
+  refreshLists();
+</script>
+
+</body>
+</html>
