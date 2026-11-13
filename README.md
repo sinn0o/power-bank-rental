@@ -26,8 +26,9 @@ Spring Boot 기반 REST API. 회원/보조배터리/대여는 H2(JPA)에, 고장
 서버는 `http://localhost:8080` 에서 뜬다.
 
 ## 데모 페이지
+<img width="1213" height="756" alt="image" src="https://github.com/user-attachments/assets/845be271-83ca-4d31-a108-bbe4df2e1bb4" />
 
-`http://localhost:8080/` 에 접속하면 `src/main/resources/static/index.html` 한 파일로 만든 데모 페이지가 뜬다. 순수 HTML/CSS/JavaScript(`fetch`)로만 작성했고 빌드 도구나 외부 라이브러리가 없어서, 서버만 켜면 바로 동작한다 (같은 origin이라 CORS 설정도 필요 없다).
+`http://localhost:8080/` 에 접속하면 `src/main/resources/static/index.html` 이 뜬다. 순수 HTML/CSS/JavaScript(`fetch`)로만 작성했고 빌드 도구나 외부 라이브러리 없이 서버만 켜면 바로 동작한다 (같은 origin이라 CORS 설정도 필요 없다).
 
 - 왼쪽: 등록된 학생 / 보조배터리 목록 (검색·상태 필터는 서버 호출 없이 화면에서 바로 거른다). 행을 클릭하면 오른쪽 폼의 ID 입력칸이 자동으로 채워진다.
 - 오른쪽: 회원 등록, 보조배터리 등록, 대여, 내 대여 이력(반납 포함), 고장 신고 조회/등록 카드.
@@ -67,92 +68,3 @@ Spring Boot 기반 REST API. 회원/보조배터리/대여는 H2(JPA)에, 고장
 | 409 | `DUPLICATE_RENTAL` | 이미 RENTING 중인 회원이 또 대여 시도 |
 | 409 | `ALREADY_RETURNED` | 이미 반납된 대여를 다시 반납 시도 |
 | 409 | `OPTIMISTIC_LOCK_CONFLICT` | 동시 요청으로 인한 낙관적 락 충돌 |
-
-## 테스트 시나리오
-
-> **주의**: Windows PowerShell 5.1에서 `curl.exe -d '{"a":"b"}'`처럼 JSON을 인라인으로 넘기면, PowerShell이 네이티브 exe로 인자를 넘기는 과정에서 따옴표가 깨져 매번 `400 Bad Request`(JSON 파싱 실패)가 난다 — 실제로 겪은 문제다. 가장 확실한 우회법은 **JSON을 임시 파일에 쓰고 `--data-binary "@파일"`로 보내는 것**이다. 아래 `Invoke-Json` 헬퍼 함수가 이 처리를 대신해준다. (Git Bash라면 이 문제 자체가 없어서 `curl -d '{"a":"b"}'`를 그대로 써도 된다.)
-
-PowerShell에서 먼저 헬퍼 함수를 선언한다:
-
-```powershell
-function Invoke-Json($method, $url, $json) {
-    if ($json) {
-        $tmp = New-TemporaryFile
-        Set-Content -Path $tmp -Value $json -Encoding utf8 -NoNewline
-        curl.exe -s -w "`nHTTP:%{http_code}`n" -X $method $url -H "Content-Type: application/json" --data-binary "@$tmp"
-        Remove-Item $tmp -ErrorAction SilentlyContinue
-    } else {
-        curl.exe -s -w "`nHTTP:%{http_code}`n" -X $method $url
-    }
-}
-```
-
-### 정상 흐름
-
-```powershell
-# 1. 회원 등록
-Invoke-Json POST http://localhost:8080/members '{"name":"Hong","studentNo":"20231234"}'
-
-# 2. 보조배터리 등록
-Invoke-Json POST http://localhost:8080/power-banks '{"serialNo":"PB-001","capacityMah":10000,"location":"Library"}'
-
-# 3. 목록 조회 (전체 / AVAILABLE 필터)
-Invoke-Json GET http://localhost:8080/power-banks
-Invoke-Json GET "http://localhost:8080/power-banks?status=AVAILABLE"
-
-# 4. 대여 (memberId=1, powerBankId=1 가정)
-Invoke-Json POST http://localhost:8080/rentals '{"memberId":1,"powerBankId":1}'
-
-# 6. 회원별 대여 이력 조회
-Invoke-Json GET "http://localhost:8080/rentals?memberId=1"
-
-# 5. 반납 (rentalId=1 가정)
-Invoke-Json PATCH http://localhost:8080/rentals/1/return
-
-# 7. 고장 신고 등록 (powerBankId=1 가정)
-Invoke-Json POST http://localhost:8080/power-banks/1/reports '{"memberId":1,"type":"NOT_CHARGING","description":"Does not charge"}'
-
-# 8. 배터리별 신고 목록 조회
-Invoke-Json GET http://localhost:8080/power-banks/1/reports
-```
-
-### 에러 케이스
-
-> 아래는 "정상 흐름"을 먼저 실행한 뒤 이어서 돌리는 것을 전제로 한다 (memberId=1 "Hong", powerBankId=1 "PB-001", rentalId=1이 이미 RETURNED 상태).
-
-```powershell
-# 학번 중복 등록 -> 409 DUPLICATE_STUDENT_NO
-Invoke-Json POST http://localhost:8080/members '{"name":"Hong2","studentNo":"20231234"}'
-
-# 시리얼 번호 중복 등록 -> 409 DUPLICATE_SERIAL_NO
-Invoke-Json POST http://localhost:8080/power-banks '{"serialNo":"PB-001","capacityMah":5000,"location":"Dorm"}'
-
-# 회원2 / 배터리2 등록
-Invoke-Json POST http://localhost:8080/members '{"name":"Kim","studentNo":"20245678"}'
-Invoke-Json POST http://localhost:8080/power-banks '{"serialNo":"PB-002","capacityMah":4000,"location":"Dorm2"}'
-
-# 회원1이 배터리2를 대여 (201) -> 배터리2는 RENTED 상태가 됨
-Invoke-Json POST http://localhost:8080/rentals '{"memberId":1,"powerBankId":2}'
-
-# 회원2가 이미 RENTED인 배터리2를 대여 시도 -> 409 ALREADY_RENTED
-Invoke-Json POST http://localhost:8080/rentals '{"memberId":2,"powerBankId":2}'
-
-# 회원1은 이미 RENTING 중(배터리2)인데 배터리1도 대여 시도 -> 409 DUPLICATE_RENTAL
-Invoke-Json POST http://localhost:8080/rentals '{"memberId":1,"powerBankId":1}'
-
-# 이미 반납된 rentalId=1을 다시 반납 -> 409 ALREADY_RETURNED
-Invoke-Json PATCH http://localhost:8080/rentals/1/return
-
-# 존재하지 않는 리소스 -> 404
-Invoke-Json PATCH http://localhost:8080/rentals/999/return
-Invoke-Json GET "http://localhost:8080/rentals?memberId=999"
-Invoke-Json POST http://localhost:8080/power-banks/999/reports '{"memberId":1,"type":"BROKEN","description":"test"}'
-
-# 잘못된 쿼리 파라미터 -> 400 INVALID_PARAMETER
-Invoke-Json GET "http://localhost:8080/power-banks?status=FOO"
-
-# 검증 실패 -> 400 INVALID_REQUEST
-Invoke-Json POST http://localhost:8080/members '{"name":"","studentNo":""}'
-```
-
-위 두 시나리오는 `Invoke-Json` 헬퍼로 실제 PowerShell에서 이 순서 그대로 끝까지 실행해, 각 호출의 상태 코드와 응답 바디가 기대한 에러 코드와 정확히 일치하는 것을 확인했다 (정상 흐름 1~8번 + 에러 케이스 전부, 총 2회 반복 검증).
