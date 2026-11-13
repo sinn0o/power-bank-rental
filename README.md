@@ -5,7 +5,7 @@ Spring Boot 기반 REST API. 회원/보조배터리/대여는 H2(JPA)에, 고장
 ## 기술 스택
 
 - Java 21, Spring Boot 4.1.2, Gradle
-- Spring Data JPA + H2 (인메모리) — Member, PowerBank, Rental
+- Spring Data JPA + H2 (파일 기반, `./data`) — Member, PowerBank, Rental
 - Spring Data MongoDB — DamageReport (`damage_report` 컬렉션)
 - Validation, Lombok
 
@@ -15,7 +15,7 @@ Spring Boot 기반 REST API. 회원/보조배터리/대여는 H2(JPA)에, 고장
 
 - Java 21 설치
 - 로컬 MongoDB가 `localhost:27017`에서 실행 중일 것 (인증 없음). `powerbank` DB와 `damage_report` 컬렉션은 앱이 처음 저장할 때 자동 생성된다.
-- H2는 인메모리 DB라 별도 설치가 필요 없다. 단, **앱을 재시작하면 회원/배터리/대여 데이터는 모두 초기화**된다 (MongoDB 데이터는 유지됨).
+- H2는 별도 설치가 필요 없고, `./data/powerbank.mv.db` 파일에 저장되어 **앱을 재시작해도 회원/배터리/대여 데이터가 유지**된다. 최초 실행 시 학생 5명 / 보조배터리 10개 / 대여 이력 8건이 예시 데이터로 자동 등록된다 (`DataInitializer`).
 
 ### 기동
 

@@ -7,9 +7,9 @@ spring:
     mongodb:
       uri: mongodb://localhost:27017/powerbank
 
-  # H2 인메모리 DB: Member / PowerBank / Rental 저장용
+  # H2 파일 기반 DB: Member / PowerBank / Rental 저장용 (재시작해도 데이터 유지)
   datasource:
-    url: jdbc:h2:mem:powerbank;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:file:./data/powerbank;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
     username: sa
     password:
